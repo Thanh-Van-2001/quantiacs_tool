@@ -1,0 +1,7 @@
+﻿data-cache/
+quantiacs_workspace/generated_alphas/
+quantiacs_workspace/submissions/
+quantiacs_workspace/alpha_report.json
+__pycache__/
+*.pyc
+.env
