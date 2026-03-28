@@ -511,11 +511,11 @@ def export_submission(alpha_name: str, params: Dict, metrics: Dict,
     code = generate_strategy_code(alpha_name, params)
 
     # Write strategy.py
-    (sub_dir / "strategy.py").write_text(code)
+    (sub_dir / "strategy.py").write_text(code, encoding="utf-8")
 
     # Write strategy.ipynb
     nb = create_submission_notebook(code, alpha_name, params, metrics)
-    (sub_dir / "strategy.ipynb").write_text(json.dumps(nb, indent=2))
+    (sub_dir / "strategy.ipynb").write_text(json.dumps(nb, indent=2, ensure_ascii=False), encoding="utf-8")
 
     # Write init.ipynb (empty)
     init = {
@@ -524,12 +524,12 @@ def export_submission(alpha_name: str, params: Dict, metrics: Dict,
         "cells": [{"cell_type": "code", "metadata": {}, "id": "init",
                     "source": ["pass\n"], "execution_count": None, "outputs": []}],
     }
-    (sub_dir / "init.ipynb").write_text(json.dumps(init, indent=2))
+    (sub_dir / "init.ipynb").write_text(json.dumps(init, indent=2), encoding="utf-8")
 
     # Write metadata
     meta = {"alpha": alpha_name, "params": params, "metrics": metrics,
             "generated": datetime.now().isoformat()}
-    (sub_dir / "metadata.json").write_text(json.dumps(meta, indent=2))
+    (sub_dir / "metadata.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
     return str(sub_dir)
 
