@@ -1,188 +1,225 @@
-# Quantiacs Alpha Factory v1.0
+# Quantiacs Alpha Factory
 
-> Auto-generate, backtest & submit alpha trading strategies to Quantiacs competitions.
+> Auto-generate, optimize & submit alpha trading strategies to Quantiacs competitions.
 
-Built for quant researchers who want to systematically explore alpha space on the Quantiacs platform.
+Two tools in one repo:
+- **`q24_optimizer.py`** — Optuna-powered optimizer for the Q24 Crypto contest (recommended)
+- **`quantiacs_alpha_factory.py`** — Grid-search generator for all contest types (futures, stocks, crypto)
 
-## Architecture
-
-```
-quantiacs_alpha_factory/
-├── quantiacs_alpha_factory.py   # Main tool (all-in-one)
-├── README.md                     # This file
-├── examples/
-│   ├── quick_start.py            # Quick start example
-│   └── custom_alpha.py           # How to add custom alphas
-└── quantiacs_workspace/          # Generated at runtime
-    ├── generated_alphas/         # All generated .py strategy files
-    ├── submissions/              # Submission-ready packages
-    └── alpha_report.json         # Results ranking
-```
-
-## Prerequisites
-
-```bash
-# Install Quantiacs toolbox
-pip install git+https://github.com/quantiacs/toolbox.git
-
-# Set your API key
-export QUANTIACS_API_KEY="your_api_key_here"
-```
+---
 
 ## Quick Start
 
-### 1. List available alpha templates
 ```bash
+# 1. Setup environment
+conda create -n qntdev -c conda-forge "python>=3.11,<3.14" ipykernel ta-lib "quantiacs-source::qnt" dash
+conda activate qntdev
+pip install optuna
+
+# 2. Set API key (get from https://quantiacs.com/personalpage/homepage)
+# PowerShell
+$env:API_KEY = "your_api_key"
+# Linux/Mac
+export API_KEY="your_api_key"
+
+# 3. Run optimizer
+python q24_optimizer.py --n-trials 100
+```
+
+---
+
+## Tool 1: Q24 Crypto Optimizer (`q24_optimizer.py`)
+
+Targeted at the **Q24 Crypto Top-10 Long-Only Contest**. Uses Optuna TPE sampler + single-pass backtesting for speed.
+
+### How it works
+
+1. Loads crypto daily data **once** into memory
+2. Optuna samples an alpha template + parameters each trial
+3. Single-pass backtest runs in **2-5 seconds** (vs 3-5 min multi-pass)
+4. Results stored in SQLite — **resume-safe** (Ctrl+C and rerun anytime)
+5. Top strategies auto-exported as submission-ready `strategy.ipynb`
+
+### Commands
+
+```bash
+# Run 100 optimization trials, export top 5
+python q24_optimizer.py --n-trials 100 --top-k 5
+
+# Run 300 more trials (resumes from previous)
+python q24_optimizer.py --n-trials 300
+
+# View results without running new trials
+python q24_optimizer.py --mode results
+
+# Export a specific trial as submission
+python q24_optimizer.py --mode export --trial 42
+```
+
+### Alpha Templates (8 strategies)
+
+| Template | Description |
+|----------|-------------|
+| `sma_crossover` | Dual SMA crossover + RSI filter (from Q24 official template) |
+| `ema_momentum` | EMA trend x momentum sizing |
+| `triple_sma` | Triple SMA alignment (fast > mid > slow) |
+| `rsi_momentum` | RSI sweet-spot + SMA trend filter |
+| `breakout_long` | Donchian channel breakout + EMA filter |
+| `vol_weighted` | Inverse volatility weighting + trend |
+| `macd_long` | MACD histogram positive = long |
+| `combined_score` | Multi-factor: trend + momentum + RSI |
+
+Optuna automatically selects the best template AND tunes its parameters.
+
+### Q24 Contest Rules
+
+- Long-only positions on top-10 crypto by market cap
+- In-sample period starts 2016-01-01
+- Minimum Sharpe Ratio: **1.0**
+- No manual asset selection (must be automatic via `is_liquid`)
+- Top 7 unique-user strategies by Sharpe win
+- Only Quantiacs-provided data allowed
+
+### Output Structure
+
+```
+submissions/
+  sma_crossover_a1b2c3d4/
+    strategy.ipynb    <- Upload this to quantiacs.com
+    strategy.py       <- Local reference
+    init.ipynb        <- Dependencies (empty)
+    metadata.json     <- Alpha name, params, metrics
+  combined_score_e5f6g7h8/
+    ...
+q24_crypto.db         <- Optuna study (all trial history)
+```
+
+---
+
+## Tool 2: Alpha Factory (`quantiacs_alpha_factory.py`)
+
+Grid-search alpha generator supporting all Quantiacs contests.
+
+### Commands
+
+```bash
+# List templates for a contest
 python quantiacs_alpha_factory.py --mode list --competition futures
-```
 
-### 2. Generate alphas (no backtest, fast)
-```bash
-python quantiacs_alpha_factory.py --mode generate --competition futures --num-alphas 30
-```
+# Generate strategies (no backtest)
+python quantiacs_alpha_factory.py --mode generate --competition stocks --num-alphas 30
 
-### 3. Full pipeline: generate → backtest → rank → submit
-```bash
-python quantiacs_alpha_factory.py --mode pipeline \
-    --competition futures \
-    --num-alphas 50 \
-    --top-k 5 \
-    --api-key YOUR_KEY
-```
+# Full pipeline: generate -> backtest -> rank -> export
+python quantiacs_alpha_factory.py --mode pipeline --competition cryptodaily --num-alphas 50 --top-k 5
 
-### 4. Backtest a single strategy
-```bash
+# Backtest a single strategy
 python quantiacs_alpha_factory.py --mode backtest --strategy path/to/strategy.py
+
+# Prepare submission package
+python quantiacs_alpha_factory.py --mode submit --strategy path/to/strategy.py
 ```
 
-### 5. Prepare submission package
-```bash
-python quantiacs_alpha_factory.py --mode submit \
-    --strategy path/to/strategy.py \
-    --api-key YOUR_KEY
-```
+### Supported Contests
 
-## Competition Types
+| Competition | Flag | Assets |
+|-------------|------|--------|
+| Futures | `--competition futures` | 70+ global futures |
+| Stocks | `--competition stocks` | NASDAQ-100 |
+| Crypto Daily | `--competition cryptodaily` | Top-10 crypto |
+| Crypto Futures | `--competition cryptofutures` | Bitcoin futures |
 
-| Type          | Flag            | Assets               |
-|---------------|-----------------|----------------------|
-| Futures       | `--competition futures`      | 70+ global futures   |
-| Stocks        | `--competition stocks`       | NASDAQ-100 stocks    |
-| Crypto Daily  | `--competition cryptodaily`  | Top-10 crypto        |
-| Crypto Futures| `--competition cryptofutures`| Bitcoin futures      |
+### Alpha Templates (16 strategies, 219+ parameter combos)
 
-## Alpha Categories
+**Trend**: `sma_crossover`, `ema_crossover`, `triple_ema`, `trix_signal`
+**Mean Reversion**: `bollinger_reversion`, `rsi_reversion`, `zscore_reversion`
+**Momentum**: `momentum_rank`, `rate_of_change`
+**Volatility**: `atr_breakout`, `vol_adjusted_momentum`
+**Combo**: `macd_rsi_combo`, `ema_rsi_atr_combo`
+**Breakout**: `channel_breakout`, `range_compression`
+**Long-Only**: `momentum_long_only`, `equal_weight_liquid`
 
-The tool includes **14 alpha templates** across 7 categories:
-
-### Trend Following
-- `sma_crossover` — Dual SMA crossover (5 × 4 = 20 combos)
-- `ema_crossover` — Dual EMA crossover
-- `triple_ema` — Triple EMA alignment system
-- `trix_signal` — TRIX indicator trend-following
-
-### Mean Reversion
-- `bollinger_reversion` — Bollinger Band reversion
-- `rsi_reversion` — RSI oversold/overbought
-- `zscore_reversion` — Z-Score rolling reversion
-
-### Momentum
-- `momentum_rank` — Cross-sectional momentum ranking
-- `rate_of_change` — Rate of Change momentum
-
-### Volatility
-- `atr_breakout` — ATR-based breakout
-- `vol_adjusted_momentum` — Volatility-adjusted (risk parity)
-
-### Combo (Multi-Indicator)
-- `macd_rsi_combo` — MACD + RSI combined signal
-- `ema_rsi_atr_combo` — EMA trend + RSI filter + ATR sizing
-
-### Breakout
-- `channel_breakout` — Donchian Channel breakout
-- `range_compression` — Range compression → expansion
-
-### Long-Only (Crypto contests)
-- `momentum_long_only` — Momentum-weighted allocation
-- `equal_weight_liquid` — Equal-weight with optional trend filter
+---
 
 ## Adding Custom Alphas
 
+### For Q24 Optimizer
+
+Add to the `ALPHAS` dict in `q24_optimizer.py`:
+
 ```python
-from quantiacs_alpha_factory import register_alpha
-
-@register_alpha(
-    name="my_custom_alpha",
-    category="custom",
-    description="My proprietary signal",
-    competition_types=["futures", "stocks"],
-    param_grid={
-        "param1": [10, 20, 30],
-        "param2": [0.5, 1.0],
-    }
-)
-def gen_my_custom_alpha(params, competition_type):
-    p1 = params["param1"]
-    p2 = params["param2"]
-    return f'''
-import qnt.ta as qnta
-import qnt.data as qndata
-import qnt.backtester as qnbk
-import xarray as xr
-
-def load_data(period):
-    return qndata.futures_load_data(tail=period)
-
-def strategy(data):
+def alpha_my_custom(data, params):
     close = data.sel(field="close")
-    # Your custom logic here
-    weights = ...
-    return weights
+    is_liquid = data.sel(field="is_liquid")
+    # your logic here
+    return weights * is_liquid
 
-qnbk.backtest(
-    competition_type="{competition_type}",
-    load_data=load_data,
-    lookback_period={p1 + 50},
-    test_period=2 * 365,
-    strategy=strategy,
-    check_correlation=False,
-)
-'''
+ALPHAS["my_custom"] = {
+    "func": alpha_my_custom,
+    "suggest": lambda t: {
+        "param1": t.suggest_int("param1", 5, 50),
+        "param2": t.suggest_float("param2", 0.1, 0.9),
+    },
+}
 ```
 
-## Quantiacs Competition Rules (Key Points)
+Then add a matching `elif alpha_name == "my_custom"` block in `generate_strategy_code()`.
 
-1. **Sharpe ≥ 0.7** — In-sample Sharpe ratio must be at least 0.7
-2. **No forward-looking bias** — Don't use future data in past decisions
-3. **File must be `strategy.ipynb`** — Or import from strategy.py
-4. **Weights for all trading days** — No gaps in output
-5. **Timeout**: Futures = 10 min, Crypto = 5 min
-6. **Max 50 strategies**, select 15 for contest
-7. **Template copies are NOT eligible** — Always customize
+### For Alpha Factory
+
+Use the `@register_alpha` decorator — see `examples/custom_alpha.py`.
+
+---
 
 ## Submission Workflow
 
-1. Tool generates a submission package with:
-   - `strategy.ipynb` (ready for Quantiacs Jupyter)
-   - `strategy.py` (local reference)
-   - `init.ipynb` (external dependencies)
-   - `precheck.ipynb` (pre-submission validation)
+1. Run optimizer -> strategies exported to `submissions/`
+2. Go to https://quantiacs.com/personalpage/strategies
+3. Upload `strategy.ipynb` to Quantiacs Jupyter
+4. Run all cells to verify
+5. Click **Submit**
 
-2. Upload to Quantiacs:
-   - Go to https://quantiacs.com/personalpage/strategies
-   - Upload the files to Jupyter environment
-   - Run all cells to verify
-   - Click "Submit" button
+### Tips
 
-## Tips for Winning
+- **Avoid overfitting**: Compare single-pass vs multi-pass Sharpe. If they match, no forward-looking bias.
+- **Diversify**: Submit strategies from different alpha templates.
+- **Simple wins**: Simple strategies generalize better out-of-sample.
+- **Resume**: Optuna study persists in SQLite. Ctrl+C and rerun to continue.
+- **Template copies won't win** — always customize parameters.
 
-- **Avoid overfitting**: Use multi-pass backtesting
-- **Diversify**: Submit strategies across different categories
-- **Low correlation**: Strategies should be uncorrelated with each other
-- **Simple > Complex**: Simple strategies often generalize better
-- **Use `precheck.ipynb`** before every submission
-- **Monitor live performance** after submission
+---
+
+## Comparison
+
+| | Alpha Factory (v1) | Q24 Optimizer (v2) |
+|---|---|---|
+| Speed | ~3-5 min/strategy (multi-pass subprocess) | **~2-5 sec/strategy (single-pass in-memory)** |
+| Optimization | Grid search (brute force) | **Optuna TPE** (Bayesian) |
+| Data loading | Reload per strategy | **Load once, cache** |
+| Resume | No | **SQLite, resume-safe** |
+| Scope | All contests | Q24 Crypto Top-10 |
+| Sharpe target | >= 0.7 | >= 1.0 |
+
+---
+
+## Project Structure
+
+```
+quantiacs_alpha_factory/
+  q24_optimizer.py              # Optuna optimizer for Q24 Crypto (recommended)
+  quantiacs_alpha_factory.py    # Grid-search generator for all contests
+  README.md
+  examples/
+    quick_start.py
+    custom_alpha.py
+  submissions/                  # Auto-generated submission packages
+    {alpha}_{hash}/
+      strategy.ipynb
+      strategy.py
+      init.ipynb
+      metadata.json
+  q24_crypto.db                 # Optuna study database
+```
 
 ## License
 
-MIT — Use freely for your quant research.
+MIT
